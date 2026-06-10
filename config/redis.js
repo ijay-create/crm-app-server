@@ -17,7 +17,28 @@ if (isProd && process.env.REDIS_URL) {
     console.log("⚠️ Redis connection failed, continuing without cache");
   });
 } else {
-  console.log("⚠️ Redis disabled (no REDIS_URL or not production)");
+  console.log("⚠️ Redis disabled (safe mode)");
 }
 
-module.exports = client;
+/* =========================
+   SAFE WRAPPER (IMPORTANT)
+========================= */
+
+const safeRedis = {
+  get: async (key) => {
+    if (!client) return null;
+    return await client.get(key);
+  },
+
+  set: async (key, value, options) => {
+    if (!client) return null;
+    return await client.set(key, value, options);
+  },
+
+  del: async (key) => {
+    if (!client) return null;
+    return await client.del(key);
+  },
+};
+
+module.exports = safeRedis;
