@@ -1,5 +1,3 @@
-const fetch = require("node-fetch");
-
 const askFreeAI = async (prompt) => {
   try {
     const response = await fetch(
@@ -18,7 +16,6 @@ const askFreeAI = async (prompt) => {
 
     const data = await response.json();
 
-    // SAFE PARSING (handles all API response types)
     const aiText =
       data?.[0]?.generated_text ||
       data?.generated_text ||
@@ -32,7 +29,6 @@ const askFreeAI = async (prompt) => {
   } catch (error) {
     console.error("AI service error:", error);
 
-    // FALLBACK (IMPORTANT PART)
     return "Focus on improving lead conversion and customer engagement.";
   }
 };
