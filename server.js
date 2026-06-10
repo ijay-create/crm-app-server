@@ -30,6 +30,7 @@ const aiRoutes = require("./routes/aiRoutes");
 const adminUserRoutes = require("./routes/adminUserRoutes");
 const companyRoutes = require("./routes/companyRoutes");
 
+// optional
 let userRoutes;
 try {
   userRoutes = require("./routes/userRoutes");
@@ -53,29 +54,21 @@ const server = http.createServer(app);
 // ENV
 // =========================
 const PORT = process.env.PORT || 5000;
-const CLIENT_URL = process.env.CLIENT_URL || "http://localhost:5173";
+
+// IMPORTANT: backend URL (NOT client)
+const CLIENT_URL =
+  process.env.CLIENT_URL || "https://crm-app-client.vercel.app";
 
 // =========================
-// CORS CONFIG (PRODUCTION SAFE)
+// CORS (PRODUCTION SAFE)
 // =========================
-const allowedOrigins = [CLIENT_URL];
-
 app.use(
   cors({
-    origin: function (origin, callback) {
-      if (!origin || allowedOrigins.includes(origin)) {
-        callback(null, true);
-      } else {
-        callback(new Error("Not allowed by CORS"));
-      }
-    },
+    origin: CLIENT_URL,
     credentials: true,
   })
 );
 
-// =========================
-// MIDDLEWARE
-// =========================
 app.use(express.json());
 app.use(cookieParser());
 
@@ -113,7 +106,7 @@ app.get("/", (req, res) => {
 // =========================
 const io = new Server(server, {
   cors: {
-    origin: allowedOrigins,
+    origin: CLIENT_URL,
     credentials: true,
   },
 });
@@ -136,14 +129,13 @@ const startServer = async () => {
     console.log("🔄 Connecting database...");
     await connectDB();
 
-    console.log("🔄 Loading models...");
+    console.log("🔄 Authenticating DB...");
     await db.sequelize.authenticate();
 
     console.log("🔄 Syncing database...");
-    await db.sequelize.sync(); // SAFE FOR PRODUCTION
+    await db.sequelize.sync(); // SAFE for production
 
     console.log("🔄 Ensuring base company exists...");
-
     const { Company } = db;
 
     await Company.findOrCreate({
@@ -156,20 +148,17 @@ const startServer = async () => {
       },
     });
 
-    console.log("🔄 Running seeding...");
-
+    console.log("🔄 Running seed...");
     try {
       await SeedMeta.sync();
       await seedSuperAdmin();
     } catch (err) {
-      console.log("⚠️ Seeding skipped:", err.message);
+      console.log("⚠️ Seed skipped:", err.message);
     }
 
     server.listen(PORT, () => {
       console.log(`🚀 Server running on port ${PORT}`);
     });
-
-    console.log("✅ Server startup complete");
   } catch (error) {
     console.error("❌ Server startup failed:");
     console.error(error);
