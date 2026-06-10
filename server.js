@@ -10,7 +10,7 @@ const cookieParser = require("cookie-parser");
 // DB + MODELS
 // =========================
 const { connectDB } = require("./config/db");
-const db = require("./models"); // 🔥 IMPORTANT FIX (registers all models)
+const db = require("./models");
 
 // =========================
 // ROUTES
@@ -30,7 +30,6 @@ const aiRoutes = require("./routes/aiRoutes");
 const adminUserRoutes = require("./routes/adminUserRoutes");
 const companyRoutes = require("./routes/companyRoutes");
 
-// OPTIONAL ROUTES (safe load)
 let userRoutes;
 try {
   userRoutes = require("./routes/userRoutes");
@@ -48,23 +47,41 @@ const SeedMeta = require("./models/SeedMeta");
 // APP INIT
 // =========================
 const app = express();
+const server = http.createServer(app);
 
-/* =========================
-   MIDDLEWARE
-========================= */
+// =========================
+// ENV
+// =========================
+const PORT = process.env.PORT || 5000;
+const CLIENT_URL = process.env.CLIENT_URL || "http://localhost:5173";
+
+// =========================
+// CORS CONFIG (PRODUCTION SAFE)
+// =========================
+const allowedOrigins = [CLIENT_URL];
+
 app.use(
   cors({
-    origin: "http://localhost:5173",
+    origin: function (origin, callback) {
+      if (!origin || allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error("Not allowed by CORS"));
+      }
+    },
     credentials: true,
   })
 );
 
+// =========================
+// MIDDLEWARE
+// =========================
 app.use(express.json());
 app.use(cookieParser());
 
-/* =========================
-   ROUTES
-========================= */
+// =========================
+// ROUTES
+// =========================
 app.use("/api/auth", authRoutes);
 app.use("/api/customers", customerRoutes);
 app.use("/api/analytics", analyticsRoutes);
@@ -80,26 +97,23 @@ app.use("/api/ai", aiRoutes);
 app.use("/api/admin/users", adminUserRoutes);
 app.use("/api/companies", companyRoutes);
 
-// OPTIONAL ROUTES (safe load)
 if (userRoutes) {
   app.use("/api/users", userRoutes);
 }
 
-/* =========================
-   HEALTH CHECK
-========================= */
+// =========================
+// HEALTH CHECK
+// =========================
 app.get("/", (req, res) => {
   res.send("CRM API running");
 });
 
-/* =========================
-   SOCKET.IO
-========================= */
-const server = http.createServer(app);
-
+// =========================
+// SOCKET.IO
+// =========================
 const io = new Server(server, {
   cors: {
-    origin: "http://localhost:5173",
+    origin: allowedOrigins,
     credentials: true,
   },
 });
@@ -114,11 +128,9 @@ io.on("connection", (socket) => {
 
 app.set("io", io);
 
-/* =========================
-   START SERVER
-========================= */
-const PORT = process.env.PORT || 5000;
-
+// =========================
+// START SERVER
+// =========================
 const startServer = async () => {
   try {
     console.log("🔄 Connecting database...");
@@ -127,17 +139,14 @@ const startServer = async () => {
     console.log("🔄 Loading models...");
     await db.sequelize.authenticate();
 
-    // =========================
-    // STEP 1: CREATE CORE TABLES FIRST (NO ALTER)
-    // =========================
-    await db.sequelize.sync({ alter: false });
+    console.log("🔄 Syncing database...");
+    await db.sequelize.sync(); // SAFE FOR PRODUCTION
 
     console.log("🔄 Ensuring base company exists...");
 
     const { Company } = db;
 
-    // FORCE CREATE COMPANY BEFORE USERS
-    const [company] = await Company.findOrCreate({
+    await Company.findOrCreate({
       where: { id: 1 },
       defaults: {
         id: 1,
@@ -147,19 +156,14 @@ const startServer = async () => {
       },
     });
 
-    console.log("✅ Base company ready:", company.id);
+    console.log("🔄 Running seeding...");
 
-    // =========================
-    // STEP 2: NOW SAFE ALTER SYNC
-    // =========================
-    console.log("🔄 Running safe schema sync...");
-    await db.sequelize.sync({ alter: true });
-
-    // =========================
-    // SEEDING
-    // =========================
-    await SeedMeta.sync();
-    await seedSuperAdmin();
+    try {
+      await SeedMeta.sync();
+      await seedSuperAdmin();
+    } catch (err) {
+      console.log("⚠️ Seeding skipped:", err.message);
+    }
 
     server.listen(PORT, () => {
       console.log(`🚀 Server running on port ${PORT}`);
